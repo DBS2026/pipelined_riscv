@@ -1,0 +1,502 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>RV32I Pipeline Datapath</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --bg:#eef1f5; --paper:#ffffff; --ink:#1c2430; --muted:#5b6574; --rule:#d6dce5;
+  --wire:#1c2430; --ctrl:#2b66c9; --haz:#cf3333; --fwd:#23915a; --new:#c46f00;
+  --f-pc:#f6b04a; --f-imem:#f7c79a; --f-add:#9fd89a; --f-rf:#fdf0c2; --f-imm:#ef9a94;
+  --f-ctrl:#bcd6f5; --f-haz:#a9d9ef; --f-alu:#dccdef; --f-dmem:#f8d5d5; --f-mux:#fbf38a;
+  --f-preg:#c9ced6; --f-field:#e3e7ec; --f-fwd:#cfe3fb; --f-cmp:#dbeee2; --stroke:#4a5566;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){ :root:not([data-theme="light"]){
+  --bg:#12161c; --paper:#1a1f27; --ink:#e4e8ee; --muted:#9aa4b2; --rule:#2c3440;
+  --wire:#d5dbe4; --ctrl:#6ea4ff; --haz:#ff7373; --fwd:#4fd08c; --new:#ffab3d;
+  --f-pc:#7a5320; --f-imem:#6e4a2c; --f-add:#2f5a33; --f-rf:#5a4f22; --f-imm:#6a3533;
+  --f-ctrl:#27456b; --f-haz:#1f4f63; --f-alu:#46385e; --f-dmem:#5e3336; --f-mux:#6a6420;
+  --f-preg:#3a414c; --f-field:#2c323b; --f-fwd:#253e5c; --f-cmp:#27463a; --stroke:#8b96a6;
+  color-scheme:dark; }}
+:root[data-theme="dark"]{
+  --bg:#12161c; --paper:#1a1f27; --ink:#e4e8ee; --muted:#9aa4b2; --rule:#2c3440;
+  --wire:#d5dbe4; --ctrl:#6ea4ff; --haz:#ff7373; --fwd:#4fd08c; --new:#ffab3d;
+  --f-pc:#7a5320; --f-imem:#6e4a2c; --f-add:#2f5a33; --f-rf:#5a4f22; --f-imm:#6a3533;
+  --f-ctrl:#27456b; --f-haz:#1f4f63; --f-alu:#46385e; --f-dmem:#5e3336; --f-mux:#6a6420;
+  --f-preg:#3a414c; --f-field:#2c323b; --f-fwd:#253e5c; --f-cmp:#27463a; --stroke:#8b96a6;
+  color-scheme:dark; }
+body{background:var(--bg);color:var(--ink);font-family:"IBM Plex Sans",system-ui,sans-serif;}
+.wrap{max-width:1500px;margin:0 auto;padding:28px 16px 48px;display:grid;gap:22px}
+header h1{font-size:1.6rem;font-weight:600;margin:0 0 6px;text-wrap:balance;letter-spacing:-.01em}
+header p{margin:0;color:var(--muted);max-width:75ch;line-height:1.55}
+.mono{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:.92em}
+.sheet{background:var(--paper);border:1px solid var(--rule);border-radius:10px;overflow-x:auto}
+.sheet svg{display:block;min-width:1150px;width:100%;height:auto}
+.b{stroke:var(--stroke);stroke-width:1.3}
+.pc{fill:var(--f-pc)} .imem{fill:var(--f-imem)} .add{fill:var(--f-add)} .rf{fill:var(--f-rf)}
+.imm{fill:var(--f-imm)} .ctrl{fill:var(--f-ctrl)} .haz{fill:var(--f-haz)} .alu{fill:var(--f-alu)}
+.dmem{fill:var(--f-dmem)} .mux{fill:var(--f-mux)} .preg{fill:var(--f-preg)} .pfield{fill:var(--f-field)}
+.fwdu{fill:var(--f-fwd)} .cmp{fill:var(--f-cmp)}
+.w{fill:none;stroke-width:1.5;stroke-linejoin:round}
+.w.d{stroke:var(--wire)} .w.c{stroke:var(--ctrl);stroke-width:1.3} .w.h{stroke:var(--haz);stroke-width:1.3} .w.f{stroke:var(--fwd);stroke-width:1.3}
+.ah.d,.dot.d{fill:var(--wire)} .ah.c,.dot.c{fill:var(--ctrl)} .ah.h,.dot.h{fill:var(--haz)} .ah.f,.dot.f{fill:var(--fwd)}
+svg text{fill:var(--ink)}
+.blk{font:600 14px "IBM Plex Sans",sans-serif}
+.sub{font:400 10.5px "IBM Plex Mono",monospace;fill:var(--muted)}
+.pin{font:500 9.5px "IBM Plex Mono",monospace}
+.sig{font:400 10px "IBM Plex Mono",monospace;fill:var(--muted)}
+.sig.c{fill:var(--ctrl)} .sig.h{fill:var(--haz)} .sig.f{fill:var(--fwd)}
+.preglbl{font:600 11px "IBM Plex Mono",monospace}
+.stage{font:600 12px "IBM Plex Sans",sans-serif;letter-spacing:.14em;text-transform:uppercase;fill:var(--muted)}
+.mod{font:500 9px "IBM Plex Mono",monospace;fill:var(--new)}
+.tag circle{fill:var(--new)} .tag text{font:700 11px "IBM Plex Sans",sans-serif;fill:#fff}
+.legend{display:flex;flex-wrap:wrap;gap:10px 22px;font-size:.86rem;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:8px}
+.legend i{display:inline-block;width:26px;height:0;border-top:2.5px solid}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:18px}
+.card{background:var(--paper);border:1px solid var(--rule);border-radius:10px;padding:18px 20px}
+.card h2{font-size:.78rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:0 0 12px;font-weight:600}
+.card ul{margin:0;padding:0;list-style:none;display:grid;gap:10px;line-height:1.5;font-size:.93rem}
+.card li{display:grid;grid-template-columns:24px 1fr;gap:10px;align-items:start}
+.badge{width:20px;height:20px;border-radius:50%;background:var(--new);color:#fff;font-weight:700;font-size:.72rem;display:grid;place-items:center;margin-top:1px}
+table{border-collapse:collapse;width:100%;font-size:.9rem}
+td{padding:6px 0;border-top:1px solid var(--rule);vertical-align:top}
+td:first-child{color:var(--muted);width:110px;padding-right:10px}
+tr:first-child td{border-top:0}
+
+.toc{display:flex;flex-wrap:wrap;gap:6px 8px;font-size:.84rem}
+.toc a{color:var(--ink);text-decoration:none;border:1px solid var(--rule);background:var(--paper);padding:4px 10px;border-radius:999px}
+.toc a:hover,.toc a:focus-visible{border-color:var(--ctrl);color:var(--ctrl);outline:none}
+.spec{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--rule);border:1px solid var(--rule);border-radius:10px;overflow:hidden}
+.spec div{background:var(--paper);padding:12px 14px;display:grid;gap:3px}
+.spec dt{font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.spec dd{margin:0;font-weight:600;font-size:.95rem}
+section.doc{display:grid;gap:12px;scroll-margin-top:16px}
+section.doc > h2{font-size:1.15rem;font-weight:600;margin:10px 0 0;letter-spacing:-.005em}
+section.doc > p{margin:0;color:var(--muted);max-width:80ch;line-height:1.55;font-size:.94rem}
+.tbl{background:var(--paper);border:1px solid var(--rule);border-radius:10px;overflow-x:auto}
+.tbl table{font-size:.86rem;min-width:640px}
+.tbl th{text-align:left;font-weight:600;font-size:.74rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:9px 12px;border-bottom:1px solid var(--rule);background:var(--f-field);white-space:nowrap}
+.tbl td{padding:7px 12px;border-top:1px solid var(--rule);width:auto;color:var(--ink)}
+.tbl td:first-child{color:var(--ink);width:auto;padding-right:12px}
+.tbl tr:first-child td{border-top:0}
+.tbl .grp td{background:var(--bg);font-weight:600;font-size:.76rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.tbl td.mono,.tbl .mono{font-variant-numeric:tabular-nums}
+.fmt{display:grid;gap:10px;background:var(--paper);border:1px solid var(--rule);border-radius:10px;padding:16px;overflow-x:auto}
+.fmtrow{display:grid;grid-template-columns:44px repeat(32,minmax(18px,1fr));gap:2px;min-width:720px;align-items:stretch}
+.fmtrow .nm{font-weight:600;font-size:.85rem;display:flex;align-items:center}
+.fmtrow .f{border:1px solid var(--stroke);border-radius:4px;padding:6px 2px;text-align:center;font:500 .72rem "IBM Plex Mono",monospace;display:grid;gap:2px}
+.fmtrow .f small{color:var(--muted);font-size:.64rem}
+.bits{min-width:720px;display:grid;grid-template-columns:44px repeat(32,minmax(18px,1fr));gap:2px;font:400 .62rem "IBM Plex Mono",monospace;color:var(--muted)}
+.bits span{text-align:center}
+.k-op{background:var(--f-ctrl)} .k-rd{background:var(--f-add)} .k-rs{background:var(--f-rf)} .k-f{background:var(--f-alu)} .k-imm{background:var(--f-dmem)}
+.note{font-size:.88rem;color:var(--muted);line-height:1.55;max-width:80ch}
+pre.code{margin:0;background:var(--paper);border:1px solid var(--rule);border-radius:10px;padding:14px 16px;overflow-x:auto;font:400 .82rem/1.6 "IBM Plex Mono",monospace}
+</style>
+<div class="wrap">
+<header>
+<h1>RV32I Five-Stage Pipeline</h1>
+<p>Design reference for a reduced 32-bit RISC-V core: the datapath, instruction set, encodings, control signals, hazard handling, module list and test setup. Datapath of the reduced 32-bit core: 23 instructions, full forwarding, lw→sw store forwarding, and branches resolved in EX. Every block is a Verilog module; orange labels give the module name. <span class="mono">riscv_top.v</span> only instantiates and wires them. Scroll sideways on narrow screens.</p>
+</header>
+<dl class="spec" style="margin:0">
+<div><dt>ISA</dt><dd>RV32I subset · 23 instr.</dd></div>
+<div><dt>Data width</dt><dd>32-bit, 32 registers</dd></div>
+<div><dt>Pipeline</dt><dd>5-stage, in-order</dd></div>
+<div><dt>Memory</dt><dd>Harvard · 4 KB + 4 KB</dd></div>
+<div><dt>Branches</dt><dd>Resolved in EX, not-taken</dd></div>
+<div><dt>Clocking</dt><dd>Rising edge, sync reset</dd></div>
+<div><dt>Coding style</dt><dd>Behavioral RTL, 20 modules</dd></div>
+</dl>
+<nav class="toc" aria-label="Sections">
+<a href="#datapath">Datapath</a><a href="#isa">Instruction set</a><a href="#formats">Formats</a><a href="#control">Control signals</a><a href="#alu">ALU</a><a href="#hazards">Hazards</a><a href="#modules">Modules</a><a href="#memory">Memory</a><a href="#verify">Verification</a>
+</nav>
+<section class="doc" id="datapath"><h2>Datapath</h2></section>
+<div class="legend">
+<span><i style="border-color:var(--wire)"></i>Datapath</span>
+<span><i style="border-color:var(--ctrl)"></i>Control</span>
+<span><i style="border-color:var(--fwd)"></i>Forwarding</span>
+<span><i style="border-color:var(--haz)"></i>Stall / flush</span>
+<span><span class="badge">A</span>Added in the merge</span>
+</div>
+<div class="sheet">
+<svg viewBox="0 0 1600 990" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Datapath of the 5-stage pipelined RV32I core">
+<defs>
+<marker id="ar-d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path class="ah d" d="M0,0 L10,5 L0,10 z"/></marker>
+<marker id="ar-c" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path class="ah c" d="M0,0 L10,5 L0,10 z"/></marker>
+<marker id="ar-h" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path class="ah h" d="M0,0 L10,5 L0,10 z"/></marker>
+<marker id="ar-f" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path class="ah f" d="M0,0 L10,5 L0,10 z"/></marker>
+</defs>
+<text class="stage" x="150.0" y="978" text-anchor="middle">IF · Fetch</text>
+<text class="stage" x="486.0" y="978" text-anchor="middle">ID · Decode</text>
+<text class="stage" x="876.0" y="978" text-anchor="middle">EX · Execute</text>
+<text class="stage" x="1236.0" y="978" text-anchor="middle">MEM · Memory</text>
+<text class="stage" x="1496.0" y="978" text-anchor="middle">WB · Write-back</text>
+<polygon class="b mux" points="30,440 60,451.2 60,508.8 30,520"/>
+<text class="pin" x="34" y="463.5" text-anchor="start">0</text>
+<text class="pin" x="34" y="503.5" text-anchor="start">1</text>
+<text class="mod" x="54" y="480.0" text-anchor="middle" transform="rotate(-90 54 480.0)">mux2</text>
+<rect class="b pc" x="85" y="455" width="40" height="50" rx="4"/>
+<text class="blk" x="105.0" y="485.0" text-anchor="middle">PC</text>
+<text class="mod" x="105" y="520" text-anchor="middle">pc_reg</text>
+<rect class="b imem" x="150" y="430" width="120" height="100" rx="8"/>
+<text class="blk" x="210.0" y="467.0" text-anchor="middle">Instruction</text>
+<text class="sub" x="210.0" y="485.0" text-anchor="middle">Memory</text>
+<text class="sub" x="210.0" y="503.0" text-anchor="middle">imem</text>
+<polygon class="b add" points="160.0,300.0 210.0,319.6 210.0,350.4 160.0,370.0 160.0,343.4 171.0,335.0 160.0,326.6"/>
+<text class="blk" x="190.0" y="340.0" text-anchor="middle">+</text>
+<text class="mod" x="185" y="384" text-anchor="middle">adder</text>
+<text class="pin" x="152" y="353" text-anchor="end">4</text>
+<rect class="b preg" x="300" y="130" width="22" height="700" rx="3"/>
+<text class="preglbl" x="311" y="122" text-anchor="middle">IF/ID</text>
+<text class="mod" x="311" y="845" text-anchor="middle">if_id_reg</text>
+<rect class="b preg" x="650" y="130" width="22" height="700" rx="3"/>
+<rect class="b pfield" x="650" y="130" width="22" height="30"/>
+<text class="pin" x="661" y="149" text-anchor="middle">WB</text>
+<rect class="b pfield" x="650" y="160" width="22" height="30"/>
+<text class="pin" x="661" y="179" text-anchor="middle">M</text>
+<rect class="b pfield" x="650" y="190" width="22" height="30"/>
+<text class="pin" x="661" y="209" text-anchor="middle">EX</text>
+<text class="preglbl" x="661" y="122" text-anchor="middle">ID/EX</text>
+<text class="mod" x="661" y="845" text-anchor="middle">id_ex_reg</text>
+<rect class="b preg" x="1080" y="130" width="22" height="700" rx="3"/>
+<rect class="b pfield" x="1080" y="130" width="22" height="30"/>
+<text class="pin" x="1091" y="149" text-anchor="middle">WB</text>
+<rect class="b pfield" x="1080" y="160" width="22" height="30"/>
+<text class="pin" x="1091" y="179" text-anchor="middle">M</text>
+<text class="preglbl" x="1091" y="122" text-anchor="middle">EX/MEM</text>
+<text class="mod" x="1091" y="845" text-anchor="middle">ex_mem_reg</text>
+<rect class="b preg" x="1370" y="130" width="22" height="700" rx="3"/>
+<rect class="b pfield" x="1370" y="130" width="22" height="30"/>
+<text class="pin" x="1381" y="149" text-anchor="middle">WB</text>
+<text class="preglbl" x="1381" y="122" text-anchor="middle">MEM/WB</text>
+<text class="mod" x="1381" y="845" text-anchor="middle">mem_wb_reg</text>
+<rect class="b haz" x="420" y="36" width="210" height="56" rx="10"/>
+<text class="blk" x="525.0" y="60.0" text-anchor="middle">Hazard Unit</text>
+<text class="sub" x="525.0" y="78.0" text-anchor="middle">hazard_unit</text>
+<ellipse class="b ctrl" cx="430" cy="180" rx="74" ry="32"/>
+<text class="blk" x="430" y="177" text-anchor="middle">Control</text>
+<text class="sub" x="430" y="193" text-anchor="middle">control_unit</text>
+<rect class="b rf" x="400" y="370" width="170" height="150" rx="8"/>
+<text class="blk" x="485" y="416" text-anchor="middle">Register File</text>
+<text class="pin" x="405" y="398" text-anchor="start">rs1</text>
+<text class="pin" x="405" y="428" text-anchor="start">rs2</text>
+<text class="pin" x="405" y="473" text-anchor="start">rd (write)</text>
+<text class="pin" x="405" y="503" text-anchor="start">write data</text>
+<text class="pin" x="565" y="398" text-anchor="end">data1</text>
+<text class="pin" x="565" y="503" text-anchor="end">data2</text>
+<text class="sub" x="485" y="436" text-anchor="middle">regfile</text>
+<text class="sub" x="485" y="454" text-anchor="middle">write-through</text>
+<ellipse class="b imm" cx="480" cy="590" rx="56" ry="30"/>
+<text class="blk" x="480" y="587" text-anchor="middle">Imm Gen</text>
+<text class="sub" x="480" y="603" text-anchor="middle">imm_gen</text>
+<polygon class="b mux" points="700,380 730,389.8 730,440.2 700,450"/>
+<text class="pin" x="704" y="398.5" text-anchor="start">00</text>
+<text class="pin" x="704" y="418.5" text-anchor="start">01</text>
+<text class="pin" x="704" y="438.5" text-anchor="start">10</text>
+<text class="mod" x="724" y="415.0" text-anchor="middle" transform="rotate(-90 724 415.0)">mux3</text>
+<polygon class="b mux" points="700,485 730,494.8 730,545.2 700,555"/>
+<text class="pin" x="704" y="503.5" text-anchor="start">00</text>
+<text class="pin" x="704" y="523.5" text-anchor="start">01</text>
+<text class="pin" x="704" y="543.5" text-anchor="start">10</text>
+<text class="mod" x="724" y="520.0" text-anchor="middle" transform="rotate(-90 724 520.0)">mux3</text>
+<polygon class="b mux" points="790,385 815,393.4 815,436.6 790,445"/>
+<text class="pin" x="794" y="403.5" text-anchor="start">0</text>
+<text class="pin" x="794" y="433.5" text-anchor="start">1</text>
+<text class="mod" x="809" y="415.0" text-anchor="middle" transform="rotate(-90 809 415.0)">mux2</text>
+<polygon class="b mux" points="790,480 815,488.4 815,531.6 790,540"/>
+<text class="pin" x="794" y="498.5" text-anchor="start">0</text>
+<text class="pin" x="794" y="528.5" text-anchor="start">1</text>
+<text class="mod" x="809" y="510.0" text-anchor="middle" transform="rotate(-90 809 510.0)">mux2</text>
+<polygon class="b alu" points="860.0,380.0 950.0,426.2 950.0,498.8 860.0,545.0 860.0,482.3 879.8,462.5 860.0,442.7"/>
+<text class="blk" x="914.0" y="467.5" text-anchor="middle">ALU</text>
+<text class="sub" x="905" y="532" text-anchor="middle">alu</text>
+<polygon class="b add" points="870.0,245.0 920.0,267.4 920.0,302.6 870.0,325.0 870.0,294.6 881.0,285.0 870.0,275.4"/>
+<text class="blk" x="900.0" y="290.0" text-anchor="middle">+</text>
+<text class="mod" x="895" y="338" text-anchor="middle">adder</text>
+<polygon class="b mux" points="980,260 1005,269.8 1005,320.2 980,330"/>
+<text class="pin" x="984" y="288.5" text-anchor="start">0</text>
+<text class="pin" x="984" y="318.5" text-anchor="start">1</text>
+<text class="mod" x="999" y="295.0" text-anchor="middle" transform="rotate(-90 999 295.0)">mux2</text>
+<rect class="b cmp" x="870" y="605" width="120" height="45" rx="6"/>
+<text class="blk" x="930.0" y="623.5" text-anchor="middle">Branch Compare</text>
+<text class="sub" x="930.0" y="641.5" text-anchor="middle">branch_comp</text>
+<rect class="b cmp" x="900" y="660" width="90" height="32" rx="6"/>
+<text class="sub" x="945.0" y="681.0" text-anchor="middle">pc_src_logic</text>
+<rect class="b fwdu" x="760" y="765" width="180" height="55" rx="10"/>
+<text class="blk" x="850.0" y="788.5" text-anchor="middle">Forwarding Unit</text>
+<text class="sub" x="850.0" y="806.5" text-anchor="middle">forwarding_unit</text>
+<polygon class="b mux" points="1130,290 1152,297.0 1152,333.0 1130,340"/>
+<text class="pin" x="1134" y="308.5" text-anchor="start">0</text>
+<text class="pin" x="1134" y="328.5" text-anchor="start">1</text>
+<text class="mod" x="1146" y="315.0" text-anchor="middle" transform="rotate(-90 1146 315.0)">mux2</text>
+<polygon class="b mux" points="1135,490 1158,498.4 1158,541.6 1135,550"/>
+<text class="pin" x="1139" y="508.5" text-anchor="start">0</text>
+<text class="pin" x="1139" y="538.5" text-anchor="start">1</text>
+<text class="mod" x="1152" y="520.0" text-anchor="middle" transform="rotate(-90 1152 520.0)">mux2</text>
+<rect class="b dmem" x="1190" y="400" width="140" height="140" rx="8"/>
+<text class="blk" x="1260.0" y="457.0" text-anchor="middle">Data</text>
+<text class="sub" x="1260.0" y="475.0" text-anchor="middle">Memory</text>
+<text class="sub" x="1260.0" y="493.0" text-anchor="middle">dmem</text>
+<text class="pin" x="1195" y="466" text-anchor="start">addr</text>
+<text class="pin" x="1195" y="524" text-anchor="start">write data</text>
+<text class="pin" x="1325" y="474" text-anchor="end">read</text>
+<rect class="b fwdu" x="1180" y="600" width="178" height="50" rx="10"/>
+<text class="blk" x="1269.0" y="621.0" text-anchor="middle">Store Forward</text>
+<text class="sub" x="1269.0" y="639.0" text-anchor="middle">store_forward_unit</text>
+<polygon class="b mux" points="1450,430 1480,446.8 1480,533.2 1450,550"/>
+<text class="pin" x="1454" y="463.5" text-anchor="start">00</text>
+<text class="pin" x="1454" y="493.5" text-anchor="start">01</text>
+<text class="pin" x="1454" y="523.5" text-anchor="start">10</text>
+<text class="mod" x="1474" y="490.0" text-anchor="middle" transform="rotate(-90 1474 490.0)">mux3</text>
+<polyline class="w d" points="60,480 85,480" marker-end="url(#ar-d)"/>
+<polyline class="w d" points="125,480 150,480" marker-end="url(#ar-d)"/>
+<circle class="dot d" cx="140" cy="480" r="3.2"/>
+<polyline class="w d" points="140,480 140,250 300,250" marker-end="url(#ar-d)"/>
+<circle class="dot d" cx="140" cy="320" r="3.2"/>
+<polyline class="w d" points="140,320 160,320" marker-end="url(#ar-d)"/>
+<polyline class="w d" points="135,350 160,350" marker-end="url(#ar-d)"/>
+<polyline class="w d" points="210,335 285,335 285,232 300,232" marker-end="url(#ar-d)"/>
+<circle class="dot d" cx="225" cy="335" r="3.2"/>
+<polyline class="w d" points="225,335 225,395 15,395 15,460 30,460" marker-end="url(#ar-d)"/>
+<polyline class="w d" points="270,480 300,480" marker-end="url(#ar-d)"/>
+<text class="sig" x="276" y="474" text-anchor="start">instr</text>
+<text class="sig" x="232" y="244" text-anchor="start">PC</text>
+<text class="sig" x="232" y="226" text-anchor="start">PC+4</text>
+<polyline class="w d" points="322,480 345,480"/>
+<polyline class="w d" points="345,180 345,740"/>
+<circle class="dot d" cx="345" cy="180" r="3.2"/>
+<circle class="dot d" cx="345" cy="395" r="3.2"/>
+<circle class="dot d" cx="345" cy="425" r="3.2"/>
+<circle class="dot d" cx="345" cy="590" r="3.2"/>
+<circle class="dot d" cx="345" cy="700" r="3.2"/>
+<circle class="dot d" cx="345" cy="720" r="3.2"/>
+<polyline class="w d" points="345,180 356,180" marker-end="url(#ar-d)"/>
+<polyline class="w d" points="345,395 400,395" marker-end="url(#ar-d)"/>
+<polyline class="w d" points="345,425 400,425" marker-end="url(#ar-d)"/>
+<polyline class="w d" points="345,590 424,590" marker-end="url(#ar-d)"/>
+<polyline class="w d" points="345,700 650,700" marker-end="url(#ar-d)"/>
+<polyline class="w d" points="345,720 650,720" marker-end="url(#ar-d)"/>
+<polyline class="w d" points="345,740 650,740" marker-end="url(#ar-d)"/>
+<text class="sig" x="352" y="390" text-anchor="start">[19:15]</text>
+<text class="sig" x="352" y="420" text-anchor="start">[24:20]</text>
+<text class="sig" x="590" y="695" text-anchor="start">rs1</text>
+<text class="sig" x="590" y="715" text-anchor="start">rs2</text>
+<text class="sig" x="590" y="735" text-anchor="start">rd</text>
+<polyline class="w d" points="322,232 650,232" marker-end="url(#ar-d)"/>
+<polyline class="w d" points="322,250 650,250" marker-end="url(#ar-d)"/>
+<polyline class="w d" points="570,395 650,395" marker-end="url(#ar-d)"/>
+<polyline class="w d" points="570,500 650,500" marker-end="url(#ar-d)"/>
+<polyline class="w d" points="536,590 650,590" marker-end="url(#ar-d)"/>
+<text class="sig" x="590" y="585" text-anchor="start">imm</text>
+<polyline class="w d" points="672,395 700,395" marker-end="url(#ar-d)"/>
+<polyline class="w d" points="672,500 700,500" marker-end="url(#ar-d)"/>
+<polyline class="w d" points="730,415 745,415 745,400 790,400" marker-end="url(#ar-d)"/>
+<circle class="dot d" cx="745" cy="415" r="3.2"/>
+<polyline class="w d" points="745,415 745,620 870,620" marker-end="url(#ar-d)"/>
+<polyline class="w d" points="730,520 755,520 755,495 790,495" marker-end="url(#ar-d)"/>
+<circle class="dot d" cx="755" cy="520" r="3.2"/>
+<polyline class="w d" points="755,520 755,635 870,635" marker-end="url(#ar-d)"/>
+<circle class="dot d" cx="755" cy="575" r="3.2"/>
+<polyline class="w d" points="755,575 1080,575" marker-end="url(#ar-d)"/>
+<text class="sig" x="1000" y="570" text-anchor="start">store data</text>
+<polyline class="w d" points="672,250 850,250 850,265 870,265" marker-end="url(#ar-d)"/>
+<circle class="dot d" cx="765" cy="250" r="3.2"/>
+<polyline class="w d" points="765,250 765,430 790,430" marker-end="url(#ar-d)"/>
+<polyline class="w d" points="672,590 840,590 840,305 870,305" marker-end="url(#ar-d)"/>
+<circle class="dot d" cx="775" cy="590" r="3.2"/>
+<polyline class="w d" points="775,590 775,525 790,525" marker-end="url(#ar-d)"/>
+<polyline class="w d" points="815,415 860,415" marker-end="url(#ar-d)"/>
+<polyline class="w d" points="815,510 860,510" marker-end="url(#ar-d)"/>
+<polyline class="w d" points="950,462 1080,462" marker-end="url(#ar-d)"/>
+<circle class="dot d" cx="965" cy="462" r="3.2"/>
+<polyline class="w d" points="965,462 965,315 980,315" marker-end="url(#ar-d)"/>
+<polyline class="w d" points="920,285 980,285" marker-end="url(#ar-d)"/>
+<text class="sig" x="1002" y="456" text-anchor="start">ALU result</text>
+<text class="sig" x="924" y="279" text-anchor="start">br target</text>
+<text class="pin" x="968" y="330" text-anchor="start">&~1</text>
+<polyline class="w d" points="672,232 1080,232" marker-end="url(#ar-d)"/>
+<polyline class="w d" points="672,720 1080,720" marker-end="url(#ar-d)"/>
+<polyline class="w d" points="672,740 1080,740" marker-end="url(#ar-d)"/>
+<circle class="dot d" cx="708" cy="720" r="3.2"/>
+<circle class="dot d" cx="1055" cy="740" r="3.2"/>
+<polyline class="w d" points="1005,295 1025,295 1025,925 10,925 10,500 30,500" marker-end="url(#ar-d)"/>
+<text class="sig" x="520" y="919" text-anchor="start">PC target  (branch: PC+imm · jal/jalr: ALU result)</text>
+<polyline class="w d" points="1102,462 1190,462" marker-end="url(#ar-d)"/>
+<circle class="dot d" cx="1118" cy="462" r="3.2"/>
+<circle class="dot d" cx="1165" cy="462" r="3.2"/>
+<polyline class="w d" points="1118,462 1118,305 1130,305" marker-end="url(#ar-d)"/>
+<polyline class="w d" points="1102,232 1370,232" marker-end="url(#ar-d)"/>
+<circle class="dot d" cx="1108" cy="232" r="3.2"/>
+<polyline class="w d" points="1108,232 1108,325 1130,325" marker-end="url(#ar-d)"/>
+<polyline class="w d" points="1165,462 1165,590 1370,590" marker-end="url(#ar-d)"/>
+<polyline class="w d" points="1102,575 1120,575 1120,505 1135,505" marker-end="url(#ar-d)"/>
+<polyline class="w d" points="1158,520 1190,520" marker-end="url(#ar-d)"/>
+<polyline class="w d" points="1330,470 1370,470" marker-end="url(#ar-d)"/>
+<polyline class="w d" points="1102,740 1370,740" marker-end="url(#ar-d)"/>
+<circle class="dot d" cx="1115" cy="740" r="3.2"/>
+<polyline class="w f" points="1102,720 1210,720 1210,650" marker-end="url(#ar-f)"/>
+<polyline class="w d" points="1392,590 1420,590 1420,460 1450,460" marker-end="url(#ar-d)"/>
+<polyline class="w d" points="1392,470 1430,470 1430,490 1450,490" marker-end="url(#ar-d)"/>
+<polyline class="w d" points="1392,232 1440,232 1440,520 1450,520" marker-end="url(#ar-d)"/>
+<polyline class="w d" points="1480,490 1575,490" marker-end="url(#ar-d)"/>
+<circle class="dot d" cx="1540" cy="490" r="3.2"/>
+<text class="sig" x="1490" y="482" text-anchor="start">result</text>
+<text class="sig" x="1396" y="584" text-anchor="start">ALU</text>
+<text class="sig" x="1396" y="464" text-anchor="start">mem</text>
+<text class="sig" x="1396" y="226" text-anchor="start">PC+4</text>
+<polyline class="w d" points="1540,490 1540,870 380,870 380,500 400,500" marker-end="url(#ar-d)"/>
+<circle class="dot d" cx="684" cy="870" r="3.2"/>
+<circle class="dot d" cx="1128" cy="870" r="3.2"/>
+<polyline class="w d" points="684,870 684,415 700,415" marker-end="url(#ar-d)"/>
+<circle class="dot d" cx="684" cy="520" r="3.2"/>
+<polyline class="w d" points="684,520 700,520" marker-end="url(#ar-d)"/>
+<polyline class="w d" points="1128,870 1128,535 1135,535" marker-end="url(#ar-d)"/>
+<text class="sig" x="1200" y="864" text-anchor="start">result_w  (write-back value)</text>
+<polyline class="w d" points="1392,740 1400,740 1400,855 370,855 370,470 400,470" marker-end="url(#ar-d)"/>
+<circle class="dot d" cx="1400" cy="625" r="3.2"/>
+<circle class="dot d" cx="1400" cy="812" r="3.2"/>
+<text class="sig" x="1200" y="849" text-anchor="start">rd_w</text>
+<polyline class="w f" points="1152,315 1160,315 1160,352 694,352 694,435 700,435" marker-end="url(#ar-f)"/>
+<circle class="dot f" cx="694" cy="435" r="3.2"/>
+<polyline class="w f" points="694,435 694,540 700,540" marker-end="url(#ar-f)"/>
+<text class="sig f" x="870" y="346" text-anchor="start">MEM forward value</text>
+<polyline class="w f" points="780,765 780,462 715,462 715,447" marker-end="url(#ar-f)"/>
+<polyline class="w f" points="760,775 715,775 715,552" marker-end="url(#ar-f)"/>
+<text class="sig f" x="784" y="600" text-anchor="start">ForwardA</text>
+<text class="sig f" x="719" y="680" text-anchor="start">FwdB</text>
+<polyline class="w f" points="672,700 700,700 700,790 760,790" marker-end="url(#ar-f)"/>
+<polyline class="w f" points="708,720 708,805 760,805" marker-end="url(#ar-f)"/>
+<polyline class="w f" points="1115,740 1115,795 940,795" marker-end="url(#ar-f)"/>
+<text class="sig f" x="946" y="790" text-anchor="start">rd_m, RegWrite_m</text>
+<polyline class="w f" points="1400,812 940,812" marker-end="url(#ar-f)"/>
+<text class="sig f" x="946" y="826" text-anchor="start">rd_w, RegWrite_w</text>
+<polyline class="w f" points="1400,625 1358,625" marker-end="url(#ar-f)"/>
+<polyline class="w f" points="1180,625 1146,625 1146,548" marker-end="url(#ar-f)"/>
+<text class="sig f" x="1214" y="668" text-anchor="start">rs2_m</text>
+<polyline class="w d" points="504,180 560,180"/>
+<circle class="dot c" cx="560" cy="180" r="3.2"/>
+<polyline class="w d" points="560,145 560,205"/>
+<polyline class="w c" points="560,145 650,145" marker-end="url(#ar-c)"/>
+<polyline class="w c" points="560,175 650,175" marker-end="url(#ar-c)"/>
+<polyline class="w c" points="560,205 650,205" marker-end="url(#ar-c)"/>
+<polyline class="w c" points="672,145 1080,145" marker-end="url(#ar-c)"/>
+<polyline class="w c" points="672,175 1080,175" marker-end="url(#ar-c)"/>
+<polyline class="w c" points="672,205 1012,205"/>
+<circle class="dot c" cx="1012" cy="205" r="3.2"/>
+<polyline class="w c" points="1012,205 1012,668 990,668" marker-end="url(#ar-c)"/>
+<circle class="dot c" cx="802" cy="205" r="3.2"/>
+<polyline class="w c" points="802,205 802,389" marker-end="url(#ar-c)"/>
+<circle class="dot c" cx="935" cy="205" r="3.2"/>
+<polyline class="w c" points="935,205 935,413" marker-end="url(#ar-c)"/>
+<circle class="dot c" cx="992" cy="205" r="3.2"/>
+<polyline class="w c" points="992,205 992,268" marker-end="url(#ar-c)"/>
+<circle class="dot c" cx="822" cy="205" r="3.2"/>
+<polyline class="w c" points="822,205 822,470 802,470 802,484" marker-end="url(#ar-c)"/>
+<text class="sig c" x="806" y="224" text-anchor="start">ALUSrcA</text>
+<text class="sig c" x="826" y="466" text-anchor="start">ALUSrcB</text>
+<text class="sig c" x="939" y="236" text-anchor="start">ALUCtrl</text>
+<text class="sig c" x="1016" y="640" text-anchor="start">Branch</text>
+<text class="sig c" x="996" y="224" text-anchor="start">Jump</text>
+<polyline class="w c" points="930,650 930,660" marker-end="url(#ar-c)"/>
+<polyline class="w c" points="1102,145 1370,145" marker-end="url(#ar-c)"/>
+<circle class="dot c" cx="1140" cy="145" r="3.2"/>
+<polyline class="w c" points="1140,145 1140,294" marker-end="url(#ar-c)"/>
+<polyline class="w c" points="1102,175 1260,175 1260,400" marker-end="url(#ar-c)"/>
+<circle class="dot c" cx="1260" cy="175" r="3.2"/>
+<polyline class="w c" points="1260,175 1350,175 1350,600" marker-end="url(#ar-c)"/>
+<text class="sig c" x="1346" y="395" text-anchor="end">MemWrite_m</text>
+<text class="sig c" x="1264" y="195" text-anchor="start">MemWrite</text>
+<polyline class="w c" points="1392,152 1465,152 1465,438" marker-end="url(#ar-c)"/>
+<text class="sig c" x="1469" y="175" text-anchor="start">ResultSrc</text>
+<polyline class="w c" points="1392,138 1410,138 1410,104 520,104 520,370" marker-end="url(#ar-c)"/>
+<text class="sig c" x="1000" y="99" text-anchor="start">RegWrite_w</text>
+<polyline class="w c" points="945,692 945,945 45,945 45,520" marker-end="url(#ar-c)"/>
+<circle class="dot c" cx="945" cy="945" r="3.2"/>
+<text class="sig c" x="520" y="940" text-anchor="start">PCSrc = Jump | (Branch & taken)</text>
+<polyline class="w h" points="990,684 1040,684 1040,20 520,20 520,36" marker-end="url(#ar-h)"/>
+<polyline class="w h" points="345,180 345,118 440,118 440,92" marker-end="url(#ar-h)"/>
+<text class="sig h" x="350" y="113" text-anchor="start">rs1_d, rs2_d, MemWrite_d</text>
+<polyline class="w h" points="1055,740 1055,28 580,28 580,36" marker-end="url(#ar-h)"/>
+<text class="sig h" x="1060" y="60" text-anchor="start">rd_e, load_e</text>
+<text class="sig h" x="1044" y="40" text-anchor="end">PCSrc</text>
+<polyline class="w h" points="420,52 105,52 105,455" marker-end="url(#ar-h)"/>
+<text class="sig h" x="110" y="47" text-anchor="start">stall_f (PC write)</text>
+<polyline class="w h" points="420,75 311,75 311,130" marker-end="url(#ar-h)"/>
+<text class="sig h" x="316" y="70" text-anchor="start">stall_d · flush_d</text>
+<polyline class="w h" points="630,64 661,64 661,130" marker-end="url(#ar-h)"/>
+<text class="sig h" x="626" y="59" text-anchor="start">flush_e</text>
+<polyline class="w c" points="392,205 392,548 455,548 455,562" marker-end="url(#ar-c)"/>
+<text class="sig c" x="396" y="543" text-anchor="start">ImmSrc</text>
+<g class="tag"><circle cx="578" cy="380" r="10"/><text x="578" y="384" text-anchor="middle">A</text></g>
+<g class="tag"><circle cx="1190" cy="598" r="10"/><text x="1190" y="602" text-anchor="middle">B</text></g>
+<g class="tag"><circle cx="1132" cy="282" r="10"/><text x="1132" y="286" text-anchor="middle">C</text></g>
+<g class="tag"><circle cx="368" cy="146" r="10"/><text x="368" y="150" text-anchor="middle">D</text></g>
+</svg></div>
+<p class="note">Orange tags mark what was added when the two earlier designs were merged: <b>A</b> register-file write-through, <b>B</b> store forwarding for lw → sw, <b>C</b> link-address forward for jal/jalr, <b>D</b> strict decode (invalid encodings become NOPs).</p>
+
+<section class="doc" id="isa"><h2>Instruction set</h2>
+<p>23 instructions from the RV32I base set. imm is sign-extended to 32 bits. shamt is instr[24:20].</p>
+<div class="tbl"><table><thead><tr><th>Instr.</th><th>Format</th><th>funct3</th><th>funct7</th><th>Operation</th></tr></thead><tbody><tr class="grp"><td colspan="5">R-type · opcode 0110011</td></tr><tr><td class="mono"><b>add</b></td><td>R</td><td class="mono">000</td><td class="mono">0000000</td><td class="mono">rd = rs1 + rs2</td></tr><tr><td class="mono"><b>sub</b></td><td>R</td><td class="mono">000</td><td class="mono">0100000</td><td class="mono">rd = rs1 − rs2</td></tr><tr><td class="mono"><b>sll</b></td><td>R</td><td class="mono">001</td><td class="mono">0000000</td><td class="mono">rd = rs1 &lt;&lt; rs2[4:0]</td></tr><tr><td class="mono"><b>slt</b></td><td>R</td><td class="mono">010</td><td class="mono">0000000</td><td class="mono">rd = (rs1 &lt; rs2) ? 1 : 0, signed</td></tr><tr><td class="mono"><b>xor</b></td><td>R</td><td class="mono">100</td><td class="mono">0000000</td><td class="mono">rd = rs1 ^ rs2</td></tr><tr><td class="mono"><b>srl</b></td><td>R</td><td class="mono">101</td><td class="mono">0000000</td><td class="mono">rd = rs1 &gt;&gt; rs2[4:0], logical</td></tr><tr><td class="mono"><b>or</b></td><td>R</td><td class="mono">110</td><td class="mono">0000000</td><td class="mono">rd = rs1 | rs2</td></tr><tr><td class="mono"><b>and</b></td><td>R</td><td class="mono">111</td><td class="mono">0000000</td><td class="mono">rd = rs1 &amp; rs2</td></tr><tr class="grp"><td colspan="5">I-type ALU · opcode 0010011</td></tr><tr><td class="mono"><b>addi</b></td><td>I</td><td class="mono">000</td><td class="mono">—</td><td class="mono">rd = rs1 + imm</td></tr><tr><td class="mono"><b>slti</b></td><td>I</td><td class="mono">010</td><td class="mono">—</td><td class="mono">rd = (rs1 &lt; imm) ? 1 : 0, signed</td></tr><tr><td class="mono"><b>xori</b></td><td>I</td><td class="mono">100</td><td class="mono">—</td><td class="mono">rd = rs1 ^ imm</td></tr><tr><td class="mono"><b>ori</b></td><td>I</td><td class="mono">110</td><td class="mono">—</td><td class="mono">rd = rs1 | imm</td></tr><tr><td class="mono"><b>andi</b></td><td>I</td><td class="mono">111</td><td class="mono">—</td><td class="mono">rd = rs1 &amp; imm</td></tr><tr><td class="mono"><b>slli</b></td><td>I</td><td class="mono">001</td><td class="mono">0000000</td><td class="mono">rd = rs1 &lt;&lt; shamt</td></tr><tr><td class="mono"><b>srli</b></td><td>I</td><td class="mono">101</td><td class="mono">0000000</td><td class="mono">rd = rs1 &gt;&gt; shamt, logical</td></tr><tr class="grp"><td colspan="5">Memory · lw 0000011 · sw 0100011</td></tr><tr><td class="mono"><b>lw</b></td><td>I</td><td class="mono">010</td><td class="mono">—</td><td class="mono">rd = M[rs1 + imm] (32-bit word)</td></tr><tr><td class="mono"><b>sw</b></td><td>S</td><td class="mono">010</td><td class="mono">—</td><td class="mono">M[rs1 + imm] = rs2</td></tr><tr class="grp"><td colspan="5">Branch · opcode 1100011</td></tr><tr><td class="mono"><b>beq</b></td><td>B</td><td class="mono">000</td><td class="mono">—</td><td class="mono">if (rs1 == rs2) PC = PC + imm</td></tr><tr><td class="mono"><b>bne</b></td><td>B</td><td class="mono">001</td><td class="mono">—</td><td class="mono">if (rs1 != rs2) PC = PC + imm</td></tr><tr><td class="mono"><b>blt</b></td><td>B</td><td class="mono">100</td><td class="mono">—</td><td class="mono">if (rs1 &lt; rs2) PC = PC + imm, signed</td></tr><tr><td class="mono"><b>bge</b></td><td>B</td><td class="mono">101</td><td class="mono">—</td><td class="mono">if (rs1 ≥ rs2) PC = PC + imm, signed</td></tr><tr class="grp"><td colspan="5">Jump · jal 1101111 · jalr 1100111</td></tr><tr><td class="mono"><b>jal</b></td><td>J</td><td class="mono">—</td><td class="mono">—</td><td class="mono">rd = PC + 4; PC = PC + imm</td></tr><tr><td class="mono"><b>jalr</b></td><td>I</td><td class="mono">000</td><td class="mono">—</td><td class="mono">rd = PC + 4; PC = (rs1 + imm) &amp; ~1</td></tr></tbody></table></div>
+<p>Not supported: lui, auipc, sra, srai, sltu, sltiu, bltu, bgeu, lb, lh, lbu, lhu, sb, sh, fence, ecall, ebreak and the CSR instructions. These all execute as NOPs: no register write, no memory write, no branch.</p>
+</section>
+
+<section class="doc" id="formats"><h2>Instruction formats</h2>
+<p>Bit positions follow the RISC-V specification. The B and J immediates are byte offsets with bit 0 always 0, so the branch adder needs no shift.</p>
+<div class="fmt"><div class="bits"><span></span><span>31</span><span>30</span><span>29</span><span>28</span><span>27</span><span>26</span><span>25</span><span>24</span><span>23</span><span>22</span><span>21</span><span>20</span><span>19</span><span>18</span><span>17</span><span>16</span><span>15</span><span>14</span><span>13</span><span>12</span><span>11</span><span>10</span><span>9</span><span>8</span><span>7</span><span>6</span><span>5</span><span>4</span><span>3</span><span>2</span><span>1</span><span>0</span></div><div class="fmtrow"><div class="nm">R</div><div class="f k-f" style="grid-column:span 7">funct7<small>31:25</small></div><div class="f k-rs" style="grid-column:span 5">rs2<small>24:20</small></div><div class="f k-rs" style="grid-column:span 5">rs1<small>19:15</small></div><div class="f k-f" style="grid-column:span 3">funct3<small>14:12</small></div><div class="f k-rd" style="grid-column:span 5">rd<small>11:7</small></div><div class="f k-op" style="grid-column:span 7">opcode<small>6:0</small></div></div><div class="fmtrow"><div class="nm">I</div><div class="f k-imm" style="grid-column:span 12">imm[11:0]<small>31:20</small></div><div class="f k-rs" style="grid-column:span 5">rs1<small>19:15</small></div><div class="f k-f" style="grid-column:span 3">funct3<small>14:12</small></div><div class="f k-rd" style="grid-column:span 5">rd<small>11:7</small></div><div class="f k-op" style="grid-column:span 7">opcode<small>6:0</small></div></div><div class="fmtrow"><div class="nm">S</div><div class="f k-imm" style="grid-column:span 7">imm[11:5]<small>31:25</small></div><div class="f k-rs" style="grid-column:span 5">rs2<small>24:20</small></div><div class="f k-rs" style="grid-column:span 5">rs1<small>19:15</small></div><div class="f k-f" style="grid-column:span 3">funct3<small>14:12</small></div><div class="f k-imm" style="grid-column:span 5">imm[4:0]<small>11:7</small></div><div class="f k-op" style="grid-column:span 7">opcode<small>6:0</small></div></div><div class="fmtrow"><div class="nm">B</div><div class="f k-imm" style="grid-column:span 7">imm[12|10:5]<small>31:25</small></div><div class="f k-rs" style="grid-column:span 5">rs2<small>24:20</small></div><div class="f k-rs" style="grid-column:span 5">rs1<small>19:15</small></div><div class="f k-f" style="grid-column:span 3">funct3<small>14:12</small></div><div class="f k-imm" style="grid-column:span 5">imm[4:1|11]<small>11:7</small></div><div class="f k-op" style="grid-column:span 7">opcode<small>6:0</small></div></div><div class="fmtrow"><div class="nm">J</div><div class="f k-imm" style="grid-column:span 20">imm[20|10:1|11|19:12]<small>31:12</small></div><div class="f k-rd" style="grid-column:span 5">rd<small>11:7</small></div><div class="f k-op" style="grid-column:span 7">opcode<small>6:0</small></div></div></div>
+</section>
+
+<section class="doc" id="control"><h2>Control signals</h2>
+<p>Generated by control_unit in the ID stage and carried down the pipeline in the WB, M and EX fields of the pipeline registers.</p>
+<div class="tbl"><table><thead><tr><th>Instruction</th><th>RegWrite</th><th>ImmSrc</th><th>ALUSrcA</th><th>ALUSrcB</th><th>MemWrite</th><th>ResultSrc</th><th>Branch</th><th>Jump</th><th>ALU op</th></tr></thead><tbody><tr><td><b>R-type</b></td><td class="mono">1</td><td class="mono">—</td><td class="mono">0</td><td class="mono">0</td><td class="mono">0</td><td class="mono">00 ALU</td><td class="mono">0</td><td class="mono">0</td><td class="mono">funct3/funct7</td></tr><tr><td><b>I-type ALU</b></td><td class="mono">1</td><td class="mono">00 I</td><td class="mono">0</td><td class="mono">1</td><td class="mono">0</td><td class="mono">00 ALU</td><td class="mono">0</td><td class="mono">0</td><td class="mono">funct3/funct7</td></tr><tr><td><b>lw</b></td><td class="mono">1</td><td class="mono">00 I</td><td class="mono">0</td><td class="mono">1</td><td class="mono">0</td><td class="mono">01 Mem</td><td class="mono">0</td><td class="mono">0</td><td class="mono">ADD</td></tr><tr><td><b>sw</b></td><td class="mono">0</td><td class="mono">01 S</td><td class="mono">0</td><td class="mono">1</td><td class="mono">1</td><td class="mono">—</td><td class="mono">0</td><td class="mono">0</td><td class="mono">ADD</td></tr><tr><td><b>Branch</b></td><td class="mono">0</td><td class="mono">10 B</td><td class="mono">0</td><td class="mono">0</td><td class="mono">0</td><td class="mono">—</td><td class="mono">1</td><td class="mono">0</td><td class="mono">— (branch_comp)</td></tr><tr><td><b>jal</b></td><td class="mono">1</td><td class="mono">11 J</td><td class="mono">1 (PC)</td><td class="mono">1</td><td class="mono">0</td><td class="mono">10 PC+4</td><td class="mono">0</td><td class="mono">1</td><td class="mono">ADD</td></tr><tr><td><b>jalr</b></td><td class="mono">1</td><td class="mono">00 I</td><td class="mono">0</td><td class="mono">1</td><td class="mono">0</td><td class="mono">10 PC+4</td><td class="mono">0</td><td class="mono">1</td><td class="mono">ADD</td></tr><tr><td><b>Anything else</b></td><td class="mono">0</td><td class="mono">—</td><td class="mono">0</td><td class="mono">0</td><td class="mono">0</td><td class="mono">—</td><td class="mono">0</td><td class="mono">0</td><td class="mono">NOP</td></tr></tbody></table></div>
+<p>ALUSrcA picks rs1 (0) or PC (1). ALUSrcB picks rs2 (0) or the immediate (1). ResultSrc picks the write-back value: 00 ALU result, 01 memory data, 10 PC+4.</p>
+</section>
+
+<section class="doc" id="alu"><h2>ALU operations</h2>
+<div class="tbl"><table><thead><tr><th>ALUControl</th><th>Op</th><th>Result</th><th>Used by</th></tr></thead><tbody><tr><td class="mono">000</td><td class="mono"><b>ADD</b></td><td class="mono">a + b</td><td>add, addi, lw/sw address, jal/jalr target</td></tr><tr><td class="mono">001</td><td class="mono"><b>SUB</b></td><td class="mono">a − b</td><td>sub</td></tr><tr><td class="mono">010</td><td class="mono"><b>AND</b></td><td class="mono">a &amp; b</td><td>and, andi</td></tr><tr><td class="mono">011</td><td class="mono"><b>OR</b></td><td class="mono">a | b</td><td>or, ori</td></tr><tr><td class="mono">100</td><td class="mono"><b>XOR</b></td><td class="mono">a ^ b</td><td>xor, xori</td></tr><tr><td class="mono">101</td><td class="mono"><b>SLL</b></td><td class="mono">a &lt;&lt; b[4:0]</td><td>sll, slli</td></tr><tr><td class="mono">110</td><td class="mono"><b>SRL</b></td><td class="mono">a &gt;&gt; b[4:0]</td><td>srl, srli</td></tr><tr><td class="mono">111</td><td class="mono"><b>SLT</b></td><td class="mono">signed a &lt; b</td><td>slt, slti</td></tr></tbody></table></div>
+</section>
+
+<section class="doc" id="hazards"><h2>Hazard handling</h2>
+<div class="tbl"><table><thead><tr><th>Case</th><th>Condition</th><th>Action</th><th>Cost</th></tr></thead><tbody>
+<tr><td><b>Forward from MEM</b></td><td class="mono">RegWrite_m &amp;&amp; rd_m ≠ 0 &amp;&amp; rd_m == rs_e</td><td>ForwardA/B = 10: EX uses the MEM value (PC+4 if it is a jal/jalr)</td><td>0 cycles</td></tr>
+<tr><td><b>Forward from WB</b></td><td class="mono">RegWrite_w &amp;&amp; rd_w ≠ 0 &amp;&amp; rd_w == rs_e, no MEM match</td><td>ForwardA/B = 01: EX uses result_w</td><td>0 cycles</td></tr>
+<tr><td><b>WB → ID, same cycle</b></td><td class="mono">we3 &amp;&amp; a3 == a1/a2</td><td>Register-file write-through returns the value being written</td><td>0 cycles</td></tr>
+<tr><td><b>Store forwarding</b></td><td class="mono">MemWrite_m &amp;&amp; RegWrite_w &amp;&amp; rd_w == rs2_m</td><td>store_forward_unit makes result_w the store data</td><td>0 cycles</td></tr>
+<tr><td><b>Load-use</b></td><td class="mono">load_e &amp;&amp; rd_e ≠ 0 &amp;&amp; (rd_e == rs1_d || (rd_e == rs2_d &amp;&amp; !store_d))</td><td>Hold PC and IF/ID, clear ID/EX</td><td>1 cycle</td></tr>
+<tr><td><b>Taken branch / jump</b></td><td class="mono">PCSrc_e = 1</td><td>Load the target into PC, clear IF/ID and ID/EX</td><td>2 cycles</td></tr>
+</tbody></table></div>
+<p>CPI = 1 + (load-use stalls + 2 × taken branches and jumps) ÷ instructions. The pipeline predicts not-taken, so a branch that is not taken costs nothing.</p>
+</section>
+
+<section class="doc" id="modules"><h2>Modules</h2>
+<p>20 modules in 7 files. Each block in the datapath is one module instance.</p>
+<div class="tbl"><table><thead><tr><th>File</th><th>Module</th><th>Function</th></tr></thead><tbody><tr><td class="mono">riscv_top.v</td><td class="mono"><b>riscv_top</b></td><td>Top level. Instantiates and wires every block; contains no logic.</td></tr><tr><td class="mono">regfile.v</td><td class="mono"><b>regfile</b></td><td>32 × 32-bit registers, 2 read ports, 1 write port, write-through bypass, x0 = 0.</td></tr><tr><td class="mono">regfile.v</td><td class="mono"><b>pc_reg</b></td><td>Program counter. Holds during a load-use stall.</td></tr><tr><td class="mono">regfile.v</td><td class="mono"><b>if_id_reg</b></td><td>IF/ID register: instruction, PC, PC+4. Flush and stall inputs.</td></tr><tr><td class="mono">regfile.v</td><td class="mono"><b>id_ex_reg</b></td><td>ID/EX register: control, operands, immediate, register numbers. Clear makes a bubble.</td></tr><tr><td class="mono">regfile.v</td><td class="mono"><b>ex_mem_reg</b></td><td>EX/MEM register: ALU result, store data, PC+4, rs2, rd.</td></tr><tr><td class="mono">regfile.v</td><td class="mono"><b>mem_wb_reg</b></td><td>MEM/WB register: ALU result, read data, PC+4, rd.</td></tr><tr><td class="mono">control_unit.v</td><td class="mono"><b>control_unit</b></td><td>Main decoder and ALU decoder. Invalid encodings decode to a NOP.</td></tr><tr><td class="mono">control_unit.v</td><td class="mono"><b>imm_gen</b></td><td>Builds the sign-extended I, S, B or J immediate.</td></tr><tr><td class="mono">control_unit.v</td><td class="mono"><b>pc_src_logic</b></td><td>PCSrc = Jump | (Branch &amp; taken).</td></tr><tr><td class="mono">alu.v</td><td class="mono"><b>alu</b></td><td>8 operations, selected by a 3-bit control code.</td></tr><tr><td class="mono">alu.v</td><td class="mono"><b>adder</b></td><td>32-bit adder, used for PC+4 and the branch target.</td></tr><tr><td class="mono">alu.v</td><td class="mono"><b>branch_comp</b></td><td>Branch condition for beq, bne, blt, bge.</td></tr><tr><td class="mono">alu.v</td><td class="mono"><b>mux2 / mux3</b></td><td>Parameterised 2:1 and 3:1 multiplexers (6 and 3 instances).</td></tr><tr><td class="mono">hazard_unit.v</td><td class="mono"><b>hazard_unit</b></td><td>Load-use stall and branch/jump flush signals.</td></tr><tr><td class="mono">hazard_unit.v</td><td class="mono"><b>forwarding_unit</b></td><td>ForwardA / ForwardB select for the EX operand muxes.</td></tr><tr><td class="mono">hazard_unit.v</td><td class="mono"><b>store_forward_unit</b></td><td>Selects the WB value as store data for lw → sw.</td></tr><tr><td class="mono">imem.v</td><td class="mono"><b>imem</b></td><td>4 KB instruction ROM, loaded from program.hex.</td></tr><tr><td class="mono">dmem.v</td><td class="mono"><b>dmem</b></td><td>4 KB data RAM, word access, synchronous write, combinational read.</td></tr></tbody></table></div>
+</section>
+
+<section class="doc" id="memory"><h2>Memory and reset</h2>
+<div class="tbl"><table><thead><tr><th>Item</th><th>Detail</th></tr></thead><tbody>
+<tr><td><b>Instruction memory</b></td><td>1024 × 32-bit (4 KB), indexed by PC[11:2], loaded with $readmemh from program.hex, zero-filled first</td></tr>
+<tr><td><b>Data memory</b></td><td>1024 × 32-bit (4 KB), indexed by addr[11:2]; addr[1:0] is ignored, so accesses are always word-aligned</td></tr>
+<tr><td><b>Byte order</b></td><td>Little-endian, as the RISC-V spec requires</td></tr>
+<tr><td><b>Reset</b></td><td>Synchronous, active-high rst. PC = 0x0000_0000, all pipeline registers cleared, all registers 0</td></tr>
+<tr><td><b>Top-level ports</b></td><td class="mono">clk, rst · parameter IMEM_FILE = "program.hex"</td></tr>
+</tbody></table></div>
+</section>
+
+<section class="doc" id="verify"><h2>Verification</h2>
+<p>asm.py assembles a 66-instruction test program and runs it on an instruction-level Python model to produce expected.txt. The self-checking testbench runs the RTL and compares all 32 registers, every data-memory word written, and the number of load-use stall cycles.</p>
+<div class="tbl"><table><thead><tr><th>Covered</th><th>How</th></tr></thead><tbody>
+<tr><td><b>All 23 instructions</b></td><td>Each one executes at least once, with negative operands for the signed ones</td></tr>
+<tr><td><b>Forwarding</b></td><td>Back-to-back dependent ALU instructions, from both MEM and WB</td></tr>
+<tr><td><b>Load-use stall</b></td><td>lw → add, and lw → sw where the load gives the store address (3 stalls expected)</td></tr>
+<tr><td><b>Store forwarding</b></td><td>lw → sw with the loaded value as store data, no stall</td></tr>
+<tr><td><b>Control flow</b></td><td>Taken and not-taken branches of each type, a backward loop, jal call and jalr return, with flushed instructions that must not execute</td></tr>
+<tr><td><b>Invalid encodings</b></td><td>lui, auipc, sra, sltu, lb, sb and ecall must change nothing</td></tr>
+</tbody></table></div>
+<pre class="code">python3 asm.py        # writes program.hex, program.lst, expected.txt
+iverilog -o sim tb_riscv.v riscv_top.v alu.v control_unit.v \
+         dmem.v imem.v regfile.v hazard_unit.v
+vvp sim               # prints *** ALL CHECKS PASSED ***</pre>
+<p>Result: all checks pass, with 3 load-use stall cycles as expected. Disabling store forwarding, the register-file bypass, the store stall exemption or the NOP decoding each makes the test fail.</p>
+</section>
+</div>
+
+</body></html>
